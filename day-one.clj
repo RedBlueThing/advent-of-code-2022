@@ -1,5 +1,7 @@
 (def test-data [1000 2000 3000 nil 4000 nil 5000 6000 nil 7000 8000 9000 nil 10000])
 (require '[clojure.string :as str])
+(require '[clojure.math.combinatorics :as combo])
+
 (def real-data (map #(if (not= %1 "") (Integer/parseInt %1)) (str/split-lines (slurp "day-one.txt"))))
 
 ;; Checking for nils .. I think I like the first one
