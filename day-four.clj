@@ -52,3 +52,12 @@
 
 (reduce + (map #(if (any-overlap? (first %) (second %)) 1 0) test-data))
 (reduce + (map #(if (any-overlap? (first %) (second %)) 1 0) real-data))
+
+;; Part one with sets
+(defn either-contains? [elf-one-assignments elf-two-assignments]
+  (let [elf-one-job-set (set-of-assignments elf-one-assignments)
+        elf-two-job-set (set-of-assignments elf-two-assignments)]
+    (or (set/subset? elf-one-job-set elf-two-job-set) (set/subset? elf-two-job-set elf-one-job-set))))
+
+(reduce + (map #(if (either-contains? (first %) (second %)) 1 0) test-data))
+(reduce + (map #(if (either-contains? (first %) (second %)) 1 0) real-data))
