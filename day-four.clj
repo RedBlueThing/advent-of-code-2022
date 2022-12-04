@@ -1,0 +1,54 @@
+(def test-data-raw ["2-4,6-8"
+                    "2-3,4-5"
+                    "5-7,7-9"
+                    "2-8,3-7"
+                    "6-6,4-6"
+                    "2-6,4-8"])
+
+(require '[clojure.string :as str])
+(require '[clojure.set :as set])
+
+(defn part-one-parse-data [data]
+  (let [comma-split #(str/split % #",")
+        dash-split #(str/split % #"-")
+        convert-split #(Integer/parseInt %1)
+        convert #(map convert-split (dash-split %))]
+    (map #(map convert (comma-split %)) data)))
+
+(def test-data (part-one-parse-data test-data-raw))
+(def real-data (part-one-parse-data (str/split-lines (slurp "day-four.txt"))))
+
+;; Part one
+
+(defn contains? [elf-one-assignments elf-two-assignments]
+  (let [elf-one-section-start (first elf-one-assignments)
+        elf-one-section-end (last elf-one-assignments)
+        elf-two-section-start (first elf-two-assignments)
+        elf-two-section-end (last elf-two-assignments)]
+    (and (<= elf-one-section-start elf-two-section-start) (>= elf-one-section-end elf-two-section-end))))
+
+(contains? [1 5] [2 3])
+
+(defn fully-contains? [elf-one-assignments elf-two-assignments]
+  (or (contains? elf-one-assignments elf-two-assignments)
+      (contains? elf-two-assignments elf-one-assignments)))
+
+(fully-contains? [2 3] [1 5])
+
+(reduce + (map #(if (fully-contains? (first %) (second %)) 1 0) test-data))
+(reduce + (map #(if (fully-contains? (first %) (second %)) 1 0) real-data))
+
+;; Part two (can just use sets for this one)
+
+(defn set-of-assignments [assignments]
+  (let [start (first assignments)
+        end (last assignments)]
+    (set (range start (inc end)))))
+
+(defn any-overlap? [elf-one-assignments elf-two-assignments]
+  (let [elf-one-job-set (set-of-assignments elf-one-assignments)
+        elf-two-job-set (set-of-assignments elf-two-assignments)]
+    (not (empty? (set/intersection elf-one-job-set elf-two-job-set)))))
+
+(reduce + (map #(if (any-overlap? (first %) (second %)) 1 0) test-data))
+(reduce + (map #(if (any-overlap? (first %) (second %)) 1 0) real-data))
