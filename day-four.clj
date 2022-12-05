@@ -8,15 +8,17 @@
 (require '[clojure.string :as str])
 (require '[clojure.set :as set])
 
-(defn part-one-parse-data [data]
-  (let [comma-split #(str/split % #",")
-        dash-split #(str/split % #"-")
-        convert-split #(Integer/parseInt %1)
-        convert #(map convert-split (dash-split %))]
-    (map #(map convert (comma-split %)) data)))
+(defn split-line [line]
+  (str/split line #","))
 
-(def test-data (part-one-parse-data test-data-raw))
-(def real-data (part-one-parse-data (str/split-lines (slurp "day-four.txt"))))
+(defn split-section [section]
+  (map #(Integer/parseInt %) (str/split section #"-")))
+
+(defn parse-data [data]
+  (map #(map split-section %) (map split-line test-data-raw)))
+
+(def test-data (parse-data test-data-raw))
+(def real-data (parse-data (str/split-lines (slurp "day-four.txt"))))
 
 ;; Part one
 
