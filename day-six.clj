@@ -1,15 +1,14 @@
 (require '[clojure.string :as str])
 (require '[clojure.set :as set])
 
-(def test-data-raw "mjqjpqmgbljsphdztnvjfqwrcgsmlb")
-
-(def some-more-test-data-raw
-  ["bvwbjplbgvbhsrlpgdmjqwftvncz"
+(def some-test-data-raw
+  ["mjqjpqmgbljsphdztnvjfqwrcgsmlb"
+   "bvwbjplbgvbhsrlpgdmjqwftvncz"
    "nppdvjthqldpwncqszvftbrmjlhg"
    "nznrnfrfntjfmvfwmzdfjlvtqnbhcprsg"
    "zcfzfwzzqfrljwzlrfnpqdbhtmscgvjw"])
 
-(def some-expected-first-markers [5 6 10 11])
+(def some-expected-first-markers [7 5 6 10 11])
 
 (def real-data-raw (slurp "day-six.txt"))
 
@@ -23,7 +22,17 @@
   ;; the inc to go from a zero based index to a character number
   (inc (loop [index 0] (if (marker? data index marker-length) index (recur (inc index))))))
 
-(assert (= (map #(solve % 4))) some-expected-first-markers)
+(assert (= (map #(solve % 4) some-test-data-raw) some-expected-first-markers))
+
+(def part-two-test-data-raw ["mjqjpqmgbljsphdztnvjfqwrcgsmlb"
+                             "bvwbjplbgvbhsrlpgdmjqwftvncz"
+                             "nppdvjthqldpwncqszvftbrmjlhg"
+                             "nznrnfrfntjfmvfwmzdfjlvtqnbhcprsg"
+                             "zcfzfwzzqfrljwzlrfnpqdbhtmscgvjw"])
+
+(def part-two-expected-markers [19 23 23 29 26])
+
+(assert (= (map #(solve % 14) part-two-test-data-raw) part-two-expected-markers))
 
 ;; part one
 (solve real-data-raw 4)
