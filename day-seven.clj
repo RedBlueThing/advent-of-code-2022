@@ -150,4 +150,33 @@
 (size-of-all-paths (process-commands test-data-raw))
 (total-space-currently-used (process-commands test-data-raw))
 
+;; This is pretty un-readable
 (defn solve-part-two [data] (first (remove #(> (- (total-space-currently-used data) %) (- total-space space-needed)) (sort (size-of-all-paths data)))))
+
+;; It's time to remember how threading works.
+;;
+;; So this one (->) if we our functions take a first parameter. This is better,
+;; but isn't great because remove needs the data in the last spot.
+(defn solve-part-two [data]
+  (first (remove #(> (- (total-space-currently-used data) %) (- total-space space-needed)) (-> data
+       (size-of-all-paths)
+       (sort)
+       )) ))
+
+;; Fortunately there is this one (->>) which sticks the data in the last spot
+;; (which works for both our single parameter things and remove)
+;;
+;; Also, isn't it cool that you can omit the parenthesis on the single parameter
+;; functions?
+(defn solve-part-two [data]
+  (->> data
+       size-of-all-paths
+       sort
+       (remove #(> (- (total-space-currently-used data) %) (- total-space space-needed)))
+       first)
+  )
+
+(let [split-command (str/split command #" ")]
+  (case (second split-command)
+  "ls" foo
+  "cd" blah))
