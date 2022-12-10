@@ -203,13 +203,23 @@
 (defn screen-buffer-update [screen-buffer row column character]
   (update-in screen-buffer [row column] (fn [existing-chr] character)))
 
+(defn print-screen-buffer [screen-buffer]
+  (map #(apply str %) screen-buffer))
+
+(defn set-pixel-for-cycle-and-x [cycle x]
+  (let [sprite-start (- x 1)
+        sprint-end (+ x 1)]
+    (and (>= cycle sprite-start) (<= cycle sprint-end))))
+
 (defn crt-render-cycle-reducer [cpu-and-crt-state command]
   (let [[ x cycles screen-buffer ] cpu-and-crt-state
         split-command (str/split command #" ")
-        op (first split-command)]
+        op (first split-command)
+        [column row] (cycle-to-screen-coordinates cycles)
+        updated-screen-buffer (screen-buffer-update screen-buffer row column (if (set-pixel-for-cycle-and-x column x) \# \.))]
     (case op
-      "addx" [ (+ x (Integer/parseInt (second split-command))) (inc cycles) updated-important-signal-strengths ]
-      "noop" [ x (inc cycles) updated-important-signal-strengths ]
+      "addx" [ (+ x (Integer/parseInt (second split-command))) (inc cycles) updated-screen-buffer ]
+      "noop" [ x (inc cycles) updated-screen-buffer ]
       ))
   )
 
@@ -218,3 +228,5 @@
 
 (defn render-crt [data]
   (reduce crt-render-cycle-reducer [1 1 unlit-screen-buffer] data))
+
+(print-screen-buffer (last (render-crt (post-process-data test-data-raw))))
