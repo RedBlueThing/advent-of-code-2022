@@ -181,8 +181,40 @@
 (defn run-cpu [data]
   (reduce cpu-clock-cycle-reducer [1 1 {}] data))
 
-(reduce + (vals (last (run-cpu (post-process-data test-data-raw)))))
-
+;; part one
+(assert (= (reduce + (vals (last (run-cpu (post-process-data test-data-raw))))) expected-test-signal-strength-sum))
 (reduce + (vals (last (run-cpu (post-process-data real-data-raw)))))
 
+;; part two
+;;
+;; Cycle   1 -> ######################################## <- Cycle  40
+;; Cycle  41 -> ######################################## <- Cycle  80
+;; Cycle  81 -> ######################################## <- Cycle 120
+;; Cycle 121 -> ######################################## <- Cycle 160
+;; Cycle 161 -> ######################################## <- Cycle 200
+;; Cycle 201 -> ######################################## <- Cycle 240
 
+;; based on our cycle, get us the pixel we are checking
+(defn cycle-to-screen-coordinates [cycle]
+  (let [cycle-index (dec cycle)]
+    [(mod cycle-index 40) (int (/ cycle-index 40))])
+  )
+
+(defn screen-buffer-update [screen-buffer row column character]
+  (update-in screen-buffer [row column] (fn [existing-chr] character)))
+
+(defn crt-render-cycle-reducer [cpu-and-crt-state command]
+  (let [[ x cycles screen-buffer ] cpu-and-crt-state
+        split-command (str/split command #" ")
+        op (first split-command)]
+    (case op
+      "addx" [ (+ x (Integer/parseInt (second split-command))) (inc cycles) updated-important-signal-strengths ]
+      "noop" [ x (inc cycles) updated-important-signal-strengths ]
+      ))
+  )
+
+(def unlit-screen-buffer
+  (vec (map (fn [row] (vec (repeat 40 \.))) (range 0 6))))
+
+(defn render-crt [data]
+  (reduce crt-render-cycle-reducer [1 1 unlit-screen-buffer] data))
