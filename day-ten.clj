@@ -229,4 +229,4 @@
 (defn render-crt [data]
   (reduce crt-render-cycle-reducer [1 1 unlit-screen-buffer] data))
 
-(print-screen-buffer (last (render-crt (post-process-data test-data-raw))))
+(print-screen-buffer (last (render-crt (post-process-data real-data-raw))))
