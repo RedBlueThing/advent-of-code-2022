@@ -102,8 +102,11 @@
 
 (defn adjust-worry-part-two [worry] worry)
 
-;; The product of a all the divisors 
-(defn common-mod [data] (reduce * (map :divisor data)))
+
+(defn get-divisors [data] (map :divisor data))
+
+;; The product of all the divisors
+(defn common-mod [data] (reduce * (get-divisors data)))
 
 (common-mod (parse-data test-data-raw))
 
@@ -121,6 +124,8 @@
               ]
           (recur (-> (update-in current-data [monkey-id :inspected] inc)
                      (update-in [monkey-id :items] (partial drop 1))
+                     ;; using the product of all the divisors works because the
+                     ;; divisors are all "pairwise coprime"
                      (update-in [new-monkey-id :items] #(conj % (mod new-item-worry modulo))))))))))
 
 (defn simulate-round [data adjust-fn]
@@ -145,3 +150,20 @@
 (def expected-test-part-two 2713310158)
 (= (simulate-rounds (parse-data test-data-raw) 10000 adjust-worry-part-two) expected-test-part-two)
 (simulate-rounds (parse-data real-data-raw) 10000 adjust-worry-part-two)
+
+;; test the pairwise coprime-ness of our inputs
+(defn gcd [a b]
+  (.gcd (biginteger a) (biginteger b)))
+(gcd 19 3)
+
+(def divisors [19 3 11 17 5 2 13 7])
+(def test-divisors [23 19 13 17])
+
+(ns example.core (:require [clojure.math.combinatorics :as combo]))
+(defn test-pairwise-coprime [divisors] (every? #(= % 1) (map #(gcd (first %) (second %)) (filter #(not= (first %) (second %)) (combo/selections divisors 2)))))
+(test-pairwise-coprime divisors)
+(test-pairwise-coprime test-divisors)
+(test-pairwise-coprime [10 100])
+(test-pairwise-coprime (get-divisors (parse-data test-data-raw)))
+(test-pairwise-coprime (get-divisors (parse-data real-data-raw)))
+
