@@ -39,9 +39,7 @@
                          ((fn [pair] (map #(map read-string %) pair)))
                          vec))
 
-(defn next-elements [remaining-packet])
-
-(defn elements-in-order [first-element second-element]
+(defn elements-in-order? [first-element second-element]
   ;; if they are both vectors, just call this again with the first element
   (let [result (cond
                  ;; If both elements are vectors, we just pass it down
@@ -49,7 +47,7 @@
                  (cond
                    ;; we have elements left inboth vectors, keep going
                    (and (> (count first-element) 0) (> (count second-element) 0))
-                   (elements-in-order (first first-element) (first second-element))
+                   (elements-in-order? (first first-element) (first second-element))
                    ;; there were no elements in both vectors, no result
                    (and (= (count first-element) 0) (= (count second-element) 0))
                    :no-result
@@ -60,10 +58,10 @@
                    :out-of-order)
                  ;; if the first element is a vector (the second can't be)
                  (vector? first-element)
-                 (elements-in-order first-element (vector second-element))
+                 (elements-in-order? first-element (vector second-element))
                  ;; or the second element is a vector (the first can't be
                  (vector? second-element)
-                 (elements-in-order (vector first-element) second-element)
+                 (elements-in-order? (vector first-element) second-element)
                  ;; then they are both integers? (or maybe empty lists)
                  (and (integer? first-element) (integer? second-element))
                  (if (= first-element second-element)
@@ -81,13 +79,13 @@
                  (> (count first-element) 0)))
       (let [rest-of-first-element (apply vector (rest first-element))
             rest-of-second-element (apply vector (rest second-element))]
-        (elements-in-order rest-of-first-element rest-of-second-element))
+        (elements-in-order? rest-of-first-element rest-of-second-element))
       result)))
 
 (defn in-order? [pair]
   (let [first-packet (first pair)
         second-packet (second pair)]
-    (= (elements-in-order first-packet second-packet) :in-order)))
+    (= (elements-in-order? first-packet second-packet) :in-order)))
 
 (defn indexed-pairs-in-order [data]
   (filter #(in-order? (second %)) (map-indexed vector data)))
@@ -102,7 +100,7 @@
   (apply conj data divider-packets))
 
 (defn element-comparator [first-element second-element]
-  (case (elements-in-order first-element second-element)
+  (case (elements-in-order? first-element second-element)
     :in-order -1
     :no-result 0
     :out-of-order 1))
