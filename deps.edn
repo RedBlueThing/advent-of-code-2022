@@ -4,5 +4,8 @@
   org.clojure/math.combinatorics {:mvn/version "0.1.6"}
   lacij/lacij {:mvn/version "0.10.0"}
   aysylu/loom {:mvn/version "1.0.2"}
+  ;; org.clojure/core.memoize {:mvn/version "1.0.250"}
+  org.clojure/data.priority-map {:mvn/version "0.0.7"}
+  org.clojure/core.memoize {:mvn/version "1.0.257"}
   }
  }

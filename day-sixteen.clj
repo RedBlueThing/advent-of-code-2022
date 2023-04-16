@@ -5,6 +5,12 @@
 (require '[loom.graph :as g])
 (require '[loom.alg :as alg])
 (require '[loom.io :as io])
+(require '[clojure.core.memoize :as memo])
+(require '[clojure.data.priority-map :as pm])
+
+
+(defn optimal-path-with-priority-queue [paths]
+  (apply max-key :flow paths))
 
 (def test-data-raw
   [
@@ -99,42 +105,49 @@
          (or (and new-current (- ((valves-with-updated-costs new-current) :minutes) 2)) 0)
          (disj unvisited new-current))))))
 
+(defn additional-flow? [valves valve-id remaining-minutes]
+  (* ((valves valve-id) :flow-rate) (dec remaining-minutes)))
 
-(defn additional-flow? [path next-valve valves remaining-minutes]
-  (if (some #(= next-valve %) (path :path))
-    0
-    (* ((valves next-valve) :flow-rate) remaining-minutes)))
+(defn is-open? [valve-state valve-id]
+  (= (valve-state valve-id) :open))
 
 (defn propagate-path [path valves remaining-minutes]
   (let [
         latest-valve (valves (last (path :path)))
-        second-to-last-valve (last (butlast (path :path)))
-        ;; we can filter the other valves to make sure the second to last valve
-        ;; isn't one (so we don't run in circles).
-        ;; next-valves (filter #(not= second-to-last-valve %) (latest-valve :other-valve-ids))
+        latest-valve-id (latest-valve :id)
         next-valves (latest-valve :other-valve-ids)
+        valve-state (path :valve-state)
+        open-current-valve? (or (is-open? valve-state latest-valve-id) (= (latest-valve :flow-rate) 0))
+        move-paths (map
+                    (fn new-path [next-valve]
+                      {
+                       :valve-state valve-state
+                       :flow (path :flow)
+                       :path (conj (path :path) next-valve)})
+                    next-valves)
         ]
-    (set (map
-          (fn new-path [next-valve]
-            {
-             :flow (+ (path :flow) (additional-flow? path next-valve valves remaining-minutes))
-             ;; :flow 0
-             :path (conj (path :path) next-valve)})
-          next-valves))
-    )
-  )
+    (if (not open-current-valve?)
+      (set (conj move-paths {:valve-state (assoc valve-state latest-valve-id :open)
+                             :flow (+ (path :flow) (additional-flow? valves latest-valve-id remaining-minutes))
+                             :path (conj (path :path) latest-valve-id)}))
+      (set move-paths))))
 
 (defn propagate [paths valves remaining-minutes]
   (reduce set/union #{} (map #(propagate-path % valves remaining-minutes) paths)))
 
 (defn brute-force-bfs-valve-path [valves start-valve total-minutes]
-  (loop [paths #{ { :flow 0 :path [start-valve] } }
-         remaining-minutes (- total-minutes 2)]
+  (loop [paths #{ { :flow 0 :path [start-valve] :valve-state {} } }
+         remaining-minutes total-minutes]
+    (println remaining-minutes)
     (if (= remaining-minutes 0)
-      paths
+      (optimal-path-with-priority-queue paths)
       (recur
-       (propagate paths valves remaining-minutes)
-       (- remaining-minutes 2)))))
+       (propagate (set (take 1000 (sort #(compare (%2 :flow) (%1 :flow)) paths))) valves remaining-minutes)
+       ;; (propagate paths valves remaining-minutes)
+       (- remaining-minutes 1)))))
+
+;; (take 5 (sort #(compare (%2 :flow) (%1 :flow)) (brute-force-bfs-valve-path (parse-data test-data-raw) "AA" 4)))
+;; (set (take 5 (sort #(compare (%2 :flow) (%1 :flow)) paths)))
 
 (defn flow-rate-for-valve [valves valve-id]
   ((valves valve-id) :flow-rate))
@@ -145,13 +158,6 @@
           (fn edge-for-target [target-valve-id] [(valve :id) target-valve-id (flow-rate-for-valve valves target-valve-id) ])
           (valve :other-valve-ids)))
        (vals valves)))
-
-(defn render-valves [valves]
-  (let [graph (as-> (g/weighted-digraph) new-graph
-                (apply g/add-nodes new-graph (keys valves))
-                (apply g/add-edges new-graph (edges-for valves)))]
-    ;; Render the graph using Graphviz
-    (io/view (update-edge-attributes graph) {:title "Pipes"})))
 
 (defn update-edge-attributes [graph]
   (reduce #(let [weight (g/weight graph %2)]
@@ -164,13 +170,21 @@
           graph
           (g/edges graph)))
 
+(defn render-valves [valves]
+  (let [graph (as-> (g/weighted-digraph) new-graph
+                (apply g/add-nodes new-graph (keys valves))
+                (apply g/add-edges new-graph (edges-for valves)))]
+    ;; Render the graph using Graphviz
+    (io/view (update-edge-attributes graph) {:title "Pipes"})))
+
+
 ;; Call the render-digraph function to generate the graph
 (render-valves (parse-data test-data-raw))
 (render-valves (parse-data real-data-raw))
 ;; (brute-force-bfs-valve-path (parse-data test-data-raw) "AA" 30)
 
-
 ;; (sort #(compare (%1 :flow) (%2 :flow)) [{:flow 1} {:flow 2} {:flow 3}])
 ;; (sort #(compare (%1 :flow) (%2 :flow)) (vector (brute-force-bfs-valve-path (parse-data test-data-raw) "AA" 30)))
 
+;; (take 5 (sort #(compare (%2 :flow) (%1 :flow)) (brute-force-bfs-valve-path (parse-data test-data-raw) "AA" 4)))
 
