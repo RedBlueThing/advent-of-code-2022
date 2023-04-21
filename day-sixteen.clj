@@ -31,9 +31,7 @@
   (let [[valve-id flow-rate-string other-valve-ids] (rest (re-matches #"Valve (..) has flow rate=(\d+); tunnels? leads? to valves? (.*)" line))]
     {:id valve-id
      :flow-rate (Integer/parseInt flow-rate-string)
-     :other-valve-ids (map str/trim (str/split other-valve-ids #","))
-     :cost Integer/MAX_VALUE
-     :path []}))
+     :other-valve-ids (map str/trim (str/split other-valve-ids #","))}))
 
 (defn parse-data [data]
   (reduce (fn [current-map valve]
@@ -41,69 +39,10 @@
           {}
           (map parse-line data)))
 
-(parse-data test-data-raw)
-
 (defn max-flow-rate [data]
   (apply max (map :flow-rate (vals data))))
 
 (def start-valve-id "AA")
-
-(defn total-flow-for-valve [remaining-minutes valve]
-  (* remaining-minutes (:flow-rate valve)))
-
-(defn cost-for-valve [remaining-minutes valve]
-  (- Integer/MAX_VALUE (total-flow-for-valve remaining-minutes valve)))
-
-(defn update-cost-flow-and-minutes [valves valve-id cost flow minutes current]
-  (if (<= cost ((valves valve-id) :cost))
-    (-> valves
-        (assoc-in [valve-id :cost] cost)
-        (assoc-in [valve-id :flow] flow)
-        (assoc-in [valve-id :minutes] minutes)
-        ;; if we are updating the cost and the minutes, then set the from current
-        (assoc-in [valve-id :path] (conj ((valves current) :path) valve-id))
-        )
-    valves))
-
-(defn update-costs [valves valve-ids current remaining-minutes]
-  (reduce (fn [valves valve-id]
-            (update-cost-flow-and-minutes
-             valves
-             valve-id
-             (cost-for-valve remaining-minutes (valves valve-id))
-             (total-flow-for-valve remaining-minutes (valves valve-id))
-             remaining-minutes current))
-          valves valve-ids))
-
-(defn next-to-visit [valves unvisited]
-  (-> (filter #(some? ((valves %) :minutes)) unvisited)
-      ((fn sorted-ids [unvisited-ids] (sort #(compare (first %1) (first %2)) (map (fn [valve-id] (let [valve (valves valve-id)]
-                                                                              [(valve :cost) (valve :id)])) unvisited-ids))))
-      ;; the  lowest of the sorted costs
-      first
-      ;; the id for that entry (created by sorted-ids)
-      second
-      ))
-
-(defn optimal-valve-path [valves start-valve total-minutes]
-  (loop [current start-valve
-         current-valves (update-cost-flow-and-minutes valves current 0 0 30 start-valve)
-         ;; how many minutes when we are about to work out where to go next
-         remaining-minutes (- total-minutes 2)
-         ;; we start with unvisited valves
-         unvisited (disj (set (keys valves)) current)]
-    (if (or (<= remaining-minutes 0) (nil? current))
-      ;; we found our destination, just return the data (and the costs).
-      current-valves
-      ;; we are still looking, update our reachable neighbours costs based on remaining time
-      (let [
-            valves-with-updated-costs (update-costs current-valves ((current-valves current) :other-valve-ids) current remaining-minutes)
-            new-current (next-to-visit valves-with-updated-costs unvisited)]
-        (recur ;; new current, new valves, new unvisited
-         new-current
-         valves-with-updated-costs
-         (or (and new-current (- ((valves-with-updated-costs new-current) :minutes) 2)) 0)
-         (disj unvisited new-current))))))
 
 (defn additional-flow? [valves valve-id remaining-minutes]
   (* ((valves valve-id) :flow-rate) (dec remaining-minutes)))
@@ -111,42 +50,61 @@
 (defn is-open? [valve-state valve-id]
   (= (valve-state valve-id) :open))
 
-(defn propagate-path [path valves remaining-minutes]
-  (let [
-        latest-valve (valves (last (path :path)))
-        latest-valve-id (latest-valve :id)
-        next-valves (latest-valve :other-valve-ids)
-        valve-state (path :valve-state)
-        open-current-valve? (or (is-open? valve-state latest-valve-id) (= (latest-valve :flow-rate) 0))
-        move-paths (map
-                    (fn new-path [next-valve]
-                      {
-                       :valve-state valve-state
-                       :flow (path :flow)
-                       :path (conj (path :path) next-valve)})
-                    next-valves)
-        ]
-    (if (not open-current-valve?)
-      (set (conj move-paths {:valve-state (assoc valve-state latest-valve-id :open)
-                             :flow (+ (path :flow) (additional-flow? valves latest-valve-id remaining-minutes))
-                             :path (conj (path :path) latest-valve-id)}))
-      (set move-paths))))
+(defn key-for-agent-id [agent-index]
+  (keyword (format "agent-%d" agent-index)))
 
-(defn propagate [paths valves remaining-minutes]
-  (reduce set/union #{} (map #(propagate-path % valves remaining-minutes) paths)))
+(defn agent-paths-for-agent-count [start-valve agent-count]
+  (into {} (map (fn [i] [(key-for-agent-id i) [ start-valve ]]) (range 0 agent-count))))
 
-(defn brute-force-bfs-valve-path [valves start-valve total-minutes]
-  (loop [paths #{ { :flow 0 :path [start-valve] :valve-state {} } }
+(defn propagate-path [path valves remaining-minutes agent-count]
+  (let [agent-paths (path :agent-paths)]
+    (loop [agent-index 0
+           valve-state (path :valve-state)
+           move-paths []
+           ]
+      (if (= agent-index agent-count)
+        (set move-paths)
+        (let [
+              agent-path (get agent-paths (key-for-agent-id agent-index))
+              latest-valve (valves (last agent-path))
+              latest-valve-id (latest-valve :id)
+              next-valves (latest-valve :other-valve-ids)
+              open-current-valve? (or (is-open? valve-state latest-valve-id) (= (latest-valve :flow-rate) 0))
+              new-move-paths (map
+                              (fn new-path [next-valve]
+                                {
+                                 :valve-state valve-state
+                                 :flow (path :flow)
+                                 :agent-paths (assoc agent-paths (key-for-agent-id agent-index) (conj agent-path next-valve))})
+                              next-valves)
+              ]
+          
+          (if (not open-current-valve?)
+            (let [new-valve-state (assoc valve-state latest-valve-id :open)]
+              (recur (inc agent-index)
+                     new-valve-state
+                     (conj new-move-paths {:valve-state new-valve-state
+                                           :flow (+ (path :flow) (additional-flow? valves latest-valve-id remaining-minutes))
+                                           :agent-paths (assoc agent-paths (key-for-agent-id agent-index) (conj agent-path latest-valve-id))})))
+            (recur (inc agent-index) valve-state new-move-paths))
+          )
+        ))))
+
+(defn propagate [paths valves remaining-minutes agent-count]
+  (reduce set/union #{} (map #(propagate-path % valves remaining-minutes agent-count) paths)))
+
+
+(defn brute-force-bfs-valve-path [valves start-valve total-minutes agent-count]
+  (loop [paths #{ { :flow 0 :agent-paths (agent-paths-for-agent-count start-valve agent-count) :valve-state {} } }
          remaining-minutes total-minutes]
-    (println remaining-minutes)
     (if (= remaining-minutes 0)
       (optimal-path-with-priority-queue paths)
       (recur
-       (propagate (set (take 1000 (sort #(compare (%2 :flow) (%1 :flow)) paths))) valves remaining-minutes)
+       (propagate (set (take 100 (sort #(compare (%2 :flow) (%1 :flow)) paths))) valves remaining-minutes agent-count)
        ;; (propagate paths valves remaining-minutes)
        (- remaining-minutes 1)))))
 
-;; (take 5 (sort #(compare (%2 :flow) (%1 :flow)) (brute-force-bfs-valve-path (parse-data test-data-raw) "AA" 4)))
+;; (take 5 (sort #(compare (%2 :flow) (%1 :flow)) (brute-force-bfs-valve-path (parse-data test-data-raw) "AA" 4 1)))
 ;; (set (take 5 (sort #(compare (%2 :flow) (%1 :flow)) paths)))
 
 (defn flow-rate-for-valve [valves valve-id]
@@ -177,14 +135,17 @@
     ;; Render the graph using Graphviz
     (io/view (update-edge-attributes graph) {:title "Pipes"})))
 
+(defn render-valves [valves]
+  (let [graph (as-> (g/weighted-digraph) new-graph
+                (apply g/add-nodes new-graph (keys valves))
+                (apply g/add-edges new-graph (edges-for valves)))]
+    ;; Render the graph using Graphviz
+    (io/view (update-edge-attributes graph) {:title "Pipes"})))
+
 
 ;; Call the render-digraph function to generate the graph
 (render-valves (parse-data test-data-raw))
 (render-valves (parse-data real-data-raw))
-;; (brute-force-bfs-valve-path (parse-data test-data-raw) "AA" 30)
 
-;; (sort #(compare (%1 :flow) (%2 :flow)) [{:flow 1} {:flow 2} {:flow 3}])
-;; (sort #(compare (%1 :flow) (%2 :flow)) (vector (brute-force-bfs-valve-path (parse-data test-data-raw) "AA" 30)))
-
-;; (take 5 (sort #(compare (%2 :flow) (%1 :flow)) (brute-force-bfs-valve-path (parse-data test-data-raw) "AA" 4)))
-
+;; Part one
+(brute-force-bfs-valve-path (parse-data test-data-raw) "AA" 30 1)
