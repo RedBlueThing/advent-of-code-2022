@@ -123,9 +123,7 @@
       (optimal-path-with-priority-queue scenario-set)
       (recur
        ;; top solutions sorted by flow
-       (propagate (set (take 2000 (sort #(compare (get-in %2 [:valve-state :flow]) (get-in %1 [:valve-state :flow])) scenario-set))) valves remaining-minutes agent-count)
-       ;; brute force
-       ;; (propagate paths valves remaining-minutes agent-count)
+       (propagate (set (take 1000 (sort #(compare (get-in %2 [:valve-state :flow]) (get-in %1 [:valve-state :flow])) scenario-set))) valves remaining-minutes agent-count)
        (- remaining-minutes 1)))))
 
 ;; (take 5 (sort #(compare (%2 :flow) (%1 :flow)) (brute-force-bfs-valve-path (parse-data test-data-raw) "AA" 4 1)))
@@ -172,5 +170,8 @@
 
 ;; Part one
 (brute-force-bfs-valve-path (parse-data test-data-raw) "AA" 30 1)
+
+;; Part two
+(brute-force-bfs-valve-path (parse-data test-data-raw) "AA" 26 2)
 
 
