@@ -157,13 +157,6 @@
     ;; Render the graph using Graphviz
     (io/view (update-edge-attributes graph) {:title "Pipes"})))
 
-(defn render-valves [valves]
-  (let [graph (as-> (g/weighted-digraph) new-graph
-                (apply g/add-nodes new-graph (keys valves))
-                (apply g/add-edges new-graph (edges-for valves)))]
-    ;; Render the graph using Graphviz
-    (io/view (update-edge-attributes graph) {:title "Pipes"})))
-
 ;; Call the render-digraph function to generate the graph
 (render-valves (parse-data test-data-raw))
 (render-valves (parse-data real-data-raw))
