@@ -71,8 +71,7 @@
                    [(+ x 1/2) y (+ z 1/2)]
                    [x (+ y 1/2) (+ z 1/2)]
                    [(+ x 1) (+ y 1/2) (+ z 1/2)]
-                   ])))
-  )
+                   ]))))
 
 (defn covered-sides [cube-one cube-two]
   ;; We are going to identify overlapping sides with the center point of that
@@ -98,10 +97,181 @@
 (assert (= (count (covered-sides '(2 2 2) '(2 1 1))) 0))
 (assert (= (count (covered-sides '(1 1 1) '(2 1 0))) 0))
 
+;; ---------------------------------------------------
+
+;; Part Two - What if we created a set of cubes within the bounds of the
+;; blob (that aren't part of the blob) and then for each of those compare them
+;; to all the cubes in the blob and count the number that have six adjoining
+;; blob cubes.
+;;
+;; Then we subtract their surface area from the part one solution?
+(defn find-single-cube-bubble-enclosed-empty-space [data]
+  (into {} (filter (fn only-enclosed-space-bordering-six-cubes [[k v]] (= v 6))
+                   (reduce (fn [cube-dictionary [empty-space-cube adjoining-face-set]]
+                             (assoc cube-dictionary empty-space-cube (+ (count adjoining-face-set) (or (cube-dictionary empty-space-cube) 0))))
+                           {}
+                           (for [empty-space-cube (empty-space-for-data data)
+                                 blob-cube data]
+                             (seq [empty-space-cube (covered-sides empty-space-cube blob-cube) ]))))))
+
+;; So the problem with this solution is that it assumes single cubes inside the
+;; blob. Which works fine with the test data because there is only a single cube
+;; air bubble in the test data. The real data has much larger variously shaped
+;; air bubbles, so we need to simulate the steam/water flow from the outside
+;; around the blob.
+(defn part-two-solution-flawed [data]
+  (- (part-one-total-uncovered-sides data) (* (count (find-single-cube-bubble-enclosed-empty-space data)) 6)))
+
+(defn axis-value-for-cube [axis-label cube] (nth cube (label-to-index axis-label)))
+
+(defn range-for-data [data border]
+  (let [x-axis-values (map (partial axis-value-for-cube :x) data)
+        y-axis-values (map (partial axis-value-for-cube :y) data)
+        z-axis-values (map (partial axis-value-for-cube :z) data)
+        ;; we are going to extend the range outside the data (by border) so the
+        ;; water flow algorithm can get around the sides of the blog
+        min-x-value (- (apply min x-axis-values) border)
+        min-y-value (- (apply min y-axis-values) border)
+        min-z-value (- (apply min z-axis-values) border)
+        max-x-value (+ (apply max x-axis-values) border)
+        max-y-value (+ (apply max y-axis-values) border)
+        max-z-value (+ (apply max z-axis-values) border)]
+    {:min-x-value min-x-value
+    :min-y-value min-y-value
+    :min-z-value min-z-value
+    :max-x-value max-x-value
+    :max-y-value max-y-value
+    :max-z-value max-z-value}))
+
+
+(defn corner-for-data [data]
+  (let [cube-range (range-for-data data 0)
+        min-x-value (cube-range :min-x-value)
+        min-y-value (cube-range :min-y-value)
+        min-z-value (cube-range :min-z-value)] (seq [ min-x-value min-y-value min-z-value ])))
+
+
+(defn empty-space-for-data [data]
+  (let [
+        cube-range (range-for-data data 1)
+        min-x-value (cube-range :min-x-value)
+        min-y-value (cube-range :min-y-value)
+        min-z-value (cube-range :min-z-value)
+        max-x-value (cube-range :max-x-value)
+        max-y-value (cube-range :max-y-value)
+        max-z-value (cube-range :max-z-value)
+        all-cube-data (set (for [x (range min-x-value (inc max-x-value))
+                                 y (range min-y-value (inc max-y-value))
+                                 z (range min-z-value (inc max-z-value))]
+                             (seq [ x y z ])))]
+    (set/difference all-cube-data data)))
+
+
+
+(defn neighbours-for-cube [[x y z]]
+  ;; Where a cube is defined by the bottom/left/front corner of the cube
+  (set (map seq [
+                 [(inc x) y z]
+                 [(dec x) y z]
+                 [x (inc y) z]
+                 [x (dec y) z]
+                 [x y (inc z)]
+                 [x y (dec z)]
+                 ])))
+
+(defn trim-out-of-range [cubes-to-check cube-range]
+  (let [min-x-value (cube-range :min-x-value)
+        min-y-value (cube-range :min-y-value)
+        min-z-value (cube-range :min-z-value)
+        max-x-value (cube-range :max-x-value)
+        max-y-value (cube-range :max-y-value)
+        max-z-value (cube-range :max-z-value)
+        cubes-in-range-set (set (filter (fn [[x y z]] ;;check
+                                      (and (<= x max-x-value)
+                                           (>= x min-x-value)
+                                           (<= y max-y-value)
+                                           (>= y min-y-value)
+                                           (<= z max-z-value)
+                                           (>= z min-z-value)))
+                                    cubes-to-check))
+        ]
+    ;; return the cubes still in range
+    cubes-in-range-set))
+
+
+(defn recurse-trim-empty-space-set [empty-space-set removed-from-empty-space-set current-empty-cube blob-set cube-range]
+  ;; Given the current remaining empty space cubes to check, the range of the
+  ;; blob, the current cubes in the blob and a cube in the empty space to check
+  ;; return a new empty space set with that cube and any of it's outside blob
+  ;; neighbours removed
+  (let [neighbours-to-check (neighbours-for-cube current-empty-cube)
+        ;; remaining neighbours to check is everything that isn't out of
+        ;; range (or in the blob)
+        remaining-in-range-neighbours-to-check (trim-out-of-range neighbours-to-check cube-range)
+        ;; now check if any those in range neighbours are in the blob
+        remaining-in-range-and-outside-blob-neighbours-to-check (set/difference remaining-in-range-neighbours-to-check blob-set)
+        ;; just remove the current-cube from the empty space set to get the new trimmed empty space set
+        new-trimmed-empty-space-set (disj empty-space-set current-empty-cube)
+        ;; because we removed the current cube from the empty space set we can add it to the shared atom
+        foo (swap! removed-from-empty-space-set conj current-empty-cube)
+        ;; now we can compare our
+        ;; remaining-in-range-and-outside-blob-neighbours-to-check cubes to ones
+        ;; already removed from the empty space set to come up with the
+        ;; remaining neighbours to check
+        remaining-neighbours-to-check (set/difference remaining-in-range-and-outside-blob-neighbours-to-check @removed-from-empty-space-set)]
+
+    ;; if there are no remaining n
+    (if (empty? remaining-neighbours-to-check)
+      ;; n.b. this is just the empty space set with the cubes from this
+      ;; recursive branch removed, but we are going to intersect this with all
+      ;; the other empty-space-sets from all the other recursive branches so we
+      ;; are left with just the empty space set cubes that weren't reached by
+      ;; looking at neighbours.
+      new-trimmed-empty-space-set
+      ;; We want the intersection of all the sets of :empty-space-set from the neighbours to check (and all their neighbours)
+      (apply set/intersection (map (fn [current-empty-cube-recurse] (recurse-trim-empty-space-set new-trimmed-empty-space-set removed-from-empty-space-set current-empty-cube-recurse blob-set cube-range)) remaining-neighbours-to-check)))))
+
+;; This works perfectly except for the minor problem that it overflows the stack
+;; on the real large data set. Which in hindsight makes perfect sense.
+;;
+;; So I just need to re-write this as a queue or stack based solution and we
+;; are all good.
+(defn trim-empty-space-set-explod-on-large-data [empty-space-set current-empty-cube blob-set cube-range]
+  ;; We are going to recursively trim the empty space set as we iterate through
+  ;; adjacent cubes, and we are going to use a global atom to record the cubes
+  ;; removed from the empty-space-set so we know when to stop.
+  (let [removed-from-empty-space-set (atom #{})]
+    (recurse-trim-empty-space-set empty-space-set removed-from-empty-space-set current-empty-cube blob-set cube-range)))
+
+
+;; so we will start at the edge of the empty space and recursively check
+;; neighbours until we can only find blob cubes or cubes out of range.
+(defn solution-part-two [data]
+  (let [cube-range (range-for-data data 1)
+        empty-space-set (empty-space-for-data data)
+        blob-set (set data)
+        ;; get the part one solution so we have something to subtract
+        total-uncovered-sides (part-one-total-uncovered-sides data)
+        ;; get the number of cubes that we can't reach from the outside
+        ;; by starting at x,y,z simulate water flow outside the blob
+        set-of-unreachable-cubes (trim-empty-space-set-explod-on-large-data empty-space-set (corner-for-data empty-space-set) blob-set cube-range)
+        ;; the uncovered sides for the unreachable cubes
+        unreachable-total-uncovered-sides (part-one-total-uncovered-sides set-of-unreachable-cubes)
+        ]
+    ;; The answer is the total uncovered sides of the blobs minus the total
+    ;; uncovered sides of the unreachable cubes.
+    ;; (println (corner-for-data empty-space-set))
+    ;; (println cube-range)
+    ;; (println empty-space-set)
+    ;; (println set-of-unreachable-cubes)
+    ;; (println total-uncovered-sides)
+    ;; (println unreachable-total-uncovered-sides)
+    (- total-uncovered-sides unreachable-total-uncovered-sides)))
+
 ;; Just playing around with visualisation using thi.ng
 ;; ---------------------------------------------------
 
-(defn cube-vertices-for=bottom-left [x y z]
+(defn cube-vertices-for-bottom-left [x y z]
   [[x y z]
    [x (inc y) z]
    [(inc x) (inc y) z]
@@ -112,7 +282,7 @@
    [(inc x) y (inc z)]])
 
 (defn verticies-for-data [data]
-  (apply concat (map (fn [cube-data ] (apply cube-vertices-for=bottom-left cube-data)) data)))
+  (apply concat (map (fn [cube-data ] (apply cube-vertices-for-bottom-left cube-data)) data)))
 
 (defn faces-for-data [data]
   ;; Assuming we have vertices corresponding to the data, create indexes for
@@ -180,3 +350,4 @@
 
 (render-svg "./svg-stl-mesh.svg" stl-mesh mvp width height)
 (render-svg "./svg-cube-mesh.svg" cube-mesh mvp width height)
+
