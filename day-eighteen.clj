@@ -99,6 +99,43 @@
 
 ;; ---------------------------------------------------
 
+
+(defn axis-value-for-cube [axis-label cube] (nth cube (label-to-index axis-label)))
+
+(defn range-for-data [data border]
+  (let [x-axis-values (map (partial axis-value-for-cube :x) data)
+        y-axis-values (map (partial axis-value-for-cube :y) data)
+        z-axis-values (map (partial axis-value-for-cube :z) data)
+        ;; we are going to extend the range outside the data (by border) so the
+        ;; water flow algorithm can get around the sides of the blog
+        min-x-value (- (apply min x-axis-values) border)
+        min-y-value (- (apply min y-axis-values) border)
+        min-z-value (- (apply min z-axis-values) border)
+        max-x-value (+ (apply max x-axis-values) border)
+        max-y-value (+ (apply max y-axis-values) border)
+        max-z-value (+ (apply max z-axis-values) border)]
+    {:min-x-value min-x-value
+     :min-y-value min-y-value
+     :min-z-value min-z-value
+     :max-x-value max-x-value
+     :max-y-value max-y-value
+     :max-z-value max-z-value}))
+
+(defn empty-space-for-data [data]
+  (let [
+        cube-range (range-for-data data 0)
+        min-x-value (cube-range :min-x-value)
+        min-y-value (cube-range :min-y-value)
+        min-z-value (cube-range :min-z-value)
+        max-x-value (cube-range :max-x-value)
+        max-y-value (cube-range :max-y-value)
+        max-z-value (cube-range :max-z-value)
+        all-cube-data (set (for [x (range min-x-value (inc max-x-value))
+                                 y (range min-y-value (inc max-y-value))
+                                 z (range min-z-value (inc max-z-value))]
+                             (seq [ x y z ])))]
+    (set/difference all-cube-data data)))
+
 ;; Part Two - What if we created a set of cubes within the bounds of the
 ;; blob (that aren't part of the blob) and then for each of those compare them
 ;; to all the cubes in the blob and count the number that have six adjoining
@@ -122,26 +159,8 @@
 (defn part-two-solution-flawed [data]
   (- (part-one-total-uncovered-sides data) (* (count (find-single-cube-bubble-enclosed-empty-space data)) 6)))
 
-(defn axis-value-for-cube [axis-label cube] (nth cube (label-to-index axis-label)))
 
-(defn range-for-data [data border]
-  (let [x-axis-values (map (partial axis-value-for-cube :x) data)
-        y-axis-values (map (partial axis-value-for-cube :y) data)
-        z-axis-values (map (partial axis-value-for-cube :z) data)
-        ;; we are going to extend the range outside the data (by border) so the
-        ;; water flow algorithm can get around the sides of the blog
-        min-x-value (- (apply min x-axis-values) border)
-        min-y-value (- (apply min y-axis-values) border)
-        min-z-value (- (apply min z-axis-values) border)
-        max-x-value (+ (apply max x-axis-values) border)
-        max-y-value (+ (apply max y-axis-values) border)
-        max-z-value (+ (apply max z-axis-values) border)]
-    {:min-x-value min-x-value
-    :min-y-value min-y-value
-    :min-z-value min-z-value
-    :max-x-value max-x-value
-    :max-y-value max-y-value
-    :max-z-value max-z-value}))
+
 
 
 (defn corner-for-data [data]
@@ -151,20 +170,6 @@
         min-z-value (cube-range :min-z-value)] (seq [ min-x-value min-y-value min-z-value ])))
 
 
-(defn empty-space-for-data [data]
-  (let [
-        cube-range (range-for-data data 1)
-        min-x-value (cube-range :min-x-value)
-        min-y-value (cube-range :min-y-value)
-        min-z-value (cube-range :min-z-value)
-        max-x-value (cube-range :max-x-value)
-        max-y-value (cube-range :max-y-value)
-        max-z-value (cube-range :max-z-value)
-        all-cube-data (set (for [x (range min-x-value (inc max-x-value))
-                                 y (range min-y-value (inc max-y-value))
-                                 z (range min-z-value (inc max-z-value))]
-                             (seq [ x y z ])))]
-    (set/difference all-cube-data data)))
 
 
 
@@ -236,28 +241,58 @@
 ;;
 ;; So I just need to re-write this as a queue or stack based solution and we
 ;; are all good.
-(defn trim-empty-space-set-explod-on-large-data [empty-space-set current-empty-cube blob-set cube-range]
+(defn trim-empty-space-set-explod-on-large-data [empty-space-set starting-empty-cube blob-set cube-range]
   ;; We are going to recursively trim the empty space set as we iterate through
   ;; adjacent cubes, and we are going to use a global atom to record the cubes
   ;; removed from the empty-space-set so we know when to stop.
   (let [removed-from-empty-space-set (atom #{})]
-    (recurse-trim-empty-space-set empty-space-set removed-from-empty-space-set current-empty-cube blob-set cube-range)))
+    (recurse-trim-empty-space-set empty-space-set removed-from-empty-space-set starting-empty-cube blob-set cube-range)))
 
+
+(defn queue
+  ([] (clojure.lang.PersistentQueue/EMPTY))
+  ([coll]
+   (reduce conj clojure.lang.PersistentQueue/EMPTY coll)))
+
+(defn trim-empty-space-set-queued [empty-space-set starting-empty-cube blob-set cube-range]
+  ;; Instead of doing this recursively, let's use a queue so we don't blow up
+  ;; the stack with the large data set.
+  (loop [current-work-queue (queue [starting-empty-cube])
+         reachable-empty-set #{}
+         enqueued-set #{}
+         i 0]
+
+    ;; (println (count reachable-empty-set))
+    ;; (println (count (apply str current-work-queue)))
+    (if (or (empty? current-work-queue) (> i 100000000))
+      ;; return the empty space set minus the reachable ones (that's everything
+      ;; inside the blob)
+      (set/difference empty-space-set reachable-empty-set)
+      ;; otherwise add all our in range neighbours to the queue (and update the empty set)
+      (let [current-empty-cube (peek current-work-queue)
+            neighbours-to-check (neighbours-for-cube current-empty-cube)
+            remaining-in-range-neighbours-to-check (trim-out-of-range neighbours-to-check cube-range)
+            remaining-in-range-and-outside-blob-neighbours-to-check (set/difference remaining-in-range-neighbours-to-check blob-set)
+            new-reachable-empty-set (conj reachable-empty-set current-empty-cube)
+            remaining-neighbours-not-already-queued (set/difference  remaining-in-range-and-outside-blob-neighbours-to-check enqueued-set)
+            remaining-neighbours-to-check (set/difference remaining-neighbours-not-already-queued reachable-empty-set)
+            new-enqueued-set (apply conj enqueued-set remaining-neighbours-to-check)
+            new-work-queue (apply conj (pop current-work-queue) remaining-neighbours-to-check)]
+        (recur new-work-queue new-reachable-empty-set new-enqueued-set (inc i))))))
 
 ;; so we will start at the edge of the empty space and recursively check
 ;; neighbours until we can only find blob cubes or cubes out of range.
 (defn solution-part-two [data]
-  (let [cube-range (range-for-data data 1)
+  (let [cube-range (range-for-data data 0)
         empty-space-set (empty-space-for-data data)
         blob-set (set data)
         ;; get the part one solution so we have something to subtract
         total-uncovered-sides (part-one-total-uncovered-sides data)
         ;; get the number of cubes that we can't reach from the outside
         ;; by starting at x,y,z simulate water flow outside the blob
-        set-of-unreachable-cubes (trim-empty-space-set-explod-on-large-data empty-space-set (corner-for-data empty-space-set) blob-set cube-range)
+        set-of-unreachable-cubes (trim-empty-space-set-queued empty-space-set (corner-for-data empty-space-set) blob-set cube-range)
         ;; the uncovered sides for the unreachable cubes
-        unreachable-total-uncovered-sides (part-one-total-uncovered-sides set-of-unreachable-cubes)
-        ]
+        unreachable-total-uncovered-sides (part-one-total-uncovered-sides set-of-unreachable-cubes)]
     ;; The answer is the total uncovered sides of the blobs minus the total
     ;; uncovered sides of the unreachable cubes.
     ;; (println (corner-for-data empty-space-set))
