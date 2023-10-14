@@ -218,33 +218,81 @@
 (assert (>=resources? {:robots {} :resources {:ore :infinite, :clay 15, :obsidian 16, :geode 0}}
                       {:robots {} :resources {:ore :infinite, :clay 13, :obsidian 16, :geode 0}}))
 
-(defn maybe-prune-lagging-states [state round rounds states]
-  (let [other-states-with-matching-robots-and-more-resources (filter (fn [other-state] (>=resources? other-state state)) states)]
+(defn maybe-prune-lagging-states [state round rounds pruning-data]
+  (let [other-states-with-matching-robots ((pruning-data :matching-robot-dictionary) (state :robots))
+        other-states-with-matching-robots-and-more-resources (filter (fn [other-state] (>=resources? other-state state)) other-states-with-matching-robots)]
     ;; if other state exists with the same robots and more resources then this state can be pruned
     (if (not-empty other-states-with-matching-robots-and-more-resources)
       nil
       state)))
 
-(defn maybe-prune-losing-by-geode-robot-states [state round rounds states]
+(defn maybe-prune-losing-by-geode-robot-states [state round rounds pruning-data]
   (if (or
        (nil? state)
        (> (-> state :robots :geode-robots) 0))
     ;; if this state has geode-robots, then it's viable
     state
     ;; if it doesn't, let's check for any other states that do. If one exists, then we'll drop this state
-    (let [other-states-with-geode-robots (filter (fn [other-state] (> (-> other-state :robots :geode-robots) 0)) states)]
+    (let [other-states-with-geode-robots (pruning-data :states-with-geode-robots)]
       (if (not-empty other-states-with-geode-robots)
         nil
         state))))
 
-(defn maybe-prune-state [round rounds states state]
+(defn maybe-prune-geode-robots-every-round-states [state round rounds pruning-data]
+  ;; Once we have infinite ore and obsidian we can make a geode robot every
+  ;; round so the state with the most geodes always wins
+  (if (nil? state)
+    ;; If this one is nil it's already been pruned
+    state
+    ;; do we have infinite ore and obsidian
+    (let [best-geode-robots-for-infinite-resource-states (pruning-data :best-geode-robots-for-infinite-resource-states)
+          other-states-with-geode-robots (pruning-data :states-with-geode-robots)
+          {robots :robots resources :resources} state
+          geode-robots (robots :geode-robots)
+          {
+           ;; the resources that we use to build geodes
+           ore :ore
+           obsidian :obsidian} resources]
+      (if (and (= ore :infinite)
+               (= obsidian :infinite))
+        (if (> geode-robots best-geode-robots-for-infinite-resource-states)
+          state
+          nil)
+        state))
+    )
+  )
+
+(defn maybe-prune-state [round rounds state pruning-data]
   (-> state
-      (maybe-prune-lagging-states round rounds states)
-      (maybe-prune-losing-by-geode-robot-states round rounds states)))
+      (maybe-prune-lagging-states round rounds pruning-data)
+      (maybe-prune-losing-by-geode-robot-states round rounds pruning-data)
+      (maybe-prune-geode-robots-every-round-states round rounds pruning-data)))
 
 (defn maybe-prune-states [round rounds states]
   ;; Prune the set of remaing states to trim down the problem space
-  (set (remove nil? (map (fn [state] (maybe-prune-state round rounds states state)) states))))
+  (let [states-with-geode-robots (filter (fn [other-state] (> (-> other-state :robots :geode-robots) 0)) states)
+        geode-robots-for-states-with-infinite-resources (remove nil? (map (fn [other-state]
+                                                                      (let [{robots :robots resources :resources} other-state
+                                                                            geode-robots (robots :geode-robots)
+                                                                            {
+                                                                             ;; the resources that we use to build geodes
+                                                                             ore :ore
+                                                                             obsidian :obsidian} resources]
+                                                                        (if (and (= ore :infinite)
+                                                                                 (= obsidian :infinite))
+                                                                          geode-robots
+                                                                          nil))) states))
+        best-geode-robots-for-infinite-resource-states (if (empty? geode-robots-for-states-with-infinite-resources)
+                                                       nil
+                                                       (apply max geode-robots-for-states-with-infinite-resources))
+        matching-robot-dictionary (reduce (fn matching-robot-reducer [dict next-state] (let [robots (next-state :robots)
+                                                                                             current-states (or (dict robots) [])]
+                                                                                         (assoc dict robots (conj current-states next-state)))) {} states)
+        pruning-data {:states-with-geode-robots states-with-geode-robots
+                      :best-geode-robots-for-infinite-resource-states best-geode-robots-for-infinite-resource-states
+                      :matching-robot-dictionary matching-robot-dictionary
+                      }]
+      (set (remove nil? (map (fn [state] (maybe-prune-state round rounds state pruning-data)) states)))))
 
 (defn build-function-for-resource [resource build-function]
   (if (= resource :infinite)
@@ -305,6 +353,11 @@
 (defn solution-part-one [data rounds]
   (let [quality-levels (into {} (map (fn [blueprint] { blueprint (quality-level blueprint (state-with-most-geodes (simulate-rounds blueprint starting-state rounds))) }) data))]
     (reduce + (vals quality-levels))))
+
+(defn solution-part-two [data rounds]
+  (let [states-with-most-geodes (into {} (map (fn [blueprint] { blueprint (state-with-most-geodes (simulate-rounds blueprint starting-state rounds)) }) (take 3 data)))]
+    (println states-with-most-geodes)
+    (apply * (map (fn[state] (-> state :resources :geode)) (vals states-with-most-geodes)))))
 
 ;; == Minute 1 ==
 ;; 1 ore-collecting robot collects 1 ore; you now have 1 ore.
