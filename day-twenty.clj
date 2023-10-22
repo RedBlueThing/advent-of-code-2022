@@ -104,6 +104,21 @@
     (println offset-values)
     (reduce + offset-values)))
 
+(defn solution-part-two [data]
+  (let [decryption-key 811589153
+        decryption-count 10
+        decrypted-data (apply vector (map (fn [[index value]] [index (* value decryption-key)]) data))
+        mixed-data (map #(second %) (loop [current-data decrypted-data
+                                           i decryption-count]
+                                      (if (= i 0)
+                                        current-data
+                                        (recur (mix current-data) (dec i)))))
+        index-of-zero (index-of-pred #(= % 0) mixed-data)
+        offset-values (map #(nth mixed-data (wrap-index mixed-data (+ % index-of-zero))) [1000, 2000, 3000])]
+    (println mixed-data)
+    (println offset-values)
+    (reduce + offset-values)))
+
 ;; Initial arrangement:
 ;; 1 2 -3 3 -2 0 4
 
@@ -128,3 +143,38 @@
 ;; 4 moves between -3 and 0:
 ;; 1 2 -3 4 0 3 -2
 
+;; -----------------------
+;; part two
+
+;; Initial arrangement:
+;; 811589153, 1623178306, -2434767459, 2434767459, -1623178306, 0, 3246356612
+
+;; After 1 round of mixing:
+;; 0, -2434767459, 3246356612, -1623178306, 2434767459, 1623178306, 811589153
+
+;; After 2 rounds of mixing:
+;; 0, 2434767459, 1623178306, 3246356612, -2434767459, -1623178306, 811589153
+
+;; After 3 rounds of mixing:
+;; 0, 811589153, 2434767459, 3246356612, 1623178306, -1623178306, -2434767459
+
+;; After 4 rounds of mixing:
+;; 0, 1623178306, -2434767459, 811589153, 2434767459, 3246356612, -1623178306
+
+;; After 5 rounds of mixing:
+;; 0, 811589153, -1623178306, 1623178306, -2434767459, 3246356612, 2434767459
+
+;; After 6 rounds of mixing:
+;; 0, 811589153, -1623178306, 3246356612, -2434767459, 1623178306, 2434767459
+
+;; After 7 rounds of mixing:
+;; 0, -2434767459, 2434767459, 1623178306, -1623178306, 811589153, 3246356612
+
+;; After 8 rounds of mixing:
+;; 0, 1623178306, 3246356612, 811589153, -2434767459, 2434767459, -1623178306
+
+;; After 9 rounds of mixing:
+;; 0, 811589153, 1623178306, -2434767459, 3246356612, 2434767459, -1623178306
+
+;; After 10 rounds of mixing:
+;; 0, -2434767459, 1623178306, 3246356612, -1623178306, 2434767459, 811589153
