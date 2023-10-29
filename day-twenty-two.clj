@@ -29,10 +29,10 @@
         ;; to make our data array we concatinate all the lines (after we have
         ;; turned them in to char-arrays and added spaces on the end for the
         ;; ones that are shorter than max-line-length
-        board-map (apply concat (map (fn [line]
-                                  (concat
-                                   (char-array line)
-                                   (take (- max-line-length (count line)) (repeat \space)))) board-data))
+        board-map (apply vector (apply concat (map (fn [line]
+                                        (concat
+                                         (char-array line)
+                                         (take (- max-line-length (count line)) (repeat \space)))) board-data)))
         ]
     {:columns columns
      :rows rows
@@ -188,38 +188,46 @@
         to-from-mappings (map (fn [[from [to-row to-column]]] [[to-row to-column] (conj from from-direction)]) from-to-mappings)
         offset-from-to-mappings (map (fn [mapping] (offset-source-row-and-column-for-direction mapping from-direction)) from-to-mappings)
         offset-to-from-mappings (map (fn [mapping] (offset-source-row-and-column-for-direction mapping to-direction)) to-from-mappings)]
-    (apply vector (concat offset-from-to-mappings offset-to-from-mappings)))
-  )
+    (apply vector (concat offset-from-to-mappings offset-to-from-mappings))))
+
+
+(defn mapping-reducer [mappings [source destination]]
+  (let [existing-corner-mapping (mappings source)]
+    (if (nil? existing-corner-mapping)
+      (assoc mappings source [ destination ])
+      (assoc mappings source (conj existing-corner-mapping destination)))))
 
 (defn cube-edge-maps-real []
   ;; From my mockup of the cube I labeled the 14 outside edges as pairs marked
   ;; ABCDXYZ
-  (into {} (concat
-            ;; [[[from-row from-col] [to-row to-col to-direction]] ... ]
 
-            ;; EDGE A -
-            (mappings-for-edge 0 50 149 0 1 0 -1 0 ">" ">" 50)
-            ;; EDGE B -
-            (mappings-for-edge 0 50 150 0 0 1 1 0 "v" ">" 50)
-            ;; EDGE C -
-            (mappings-for-edge 0 149 199 49 0 -1 0 -1 "v" "^" 50)
-            ;; EDGE D -
-            (mappings-for-edge 149 99 199 49 0 -1 -1 0 "^" "<" 50)
-            ;; EDGE X -
-            (mappings-for-edge 49 100 50 99 0 1 1 0 "^" "<" 50)
-            ;; EDGE Y -
-            (mappings-for-edge 0 149 149 99 1 0 -1 0 "<" "<" 50)
-            ;; EDGE Z -
-            (mappings-for-edge 100 49 99 50 0 -1 -1 0 "v" ">" 50)
+  (reduce mapping-reducer {}
+          (concat
+           ;; [[[from-row from-col] [to-row to-col to-direction]] ... ]
 
-            ;; hack to map the zeroth position into the start position (which we
-            ;; used in part one to programmatically scan to the first cell
-            [[[0 0] [0 50 ">"]]])))
+           ;; EDGE A -
+           (mappings-for-edge 0 50 149 0 1 0 -1 0 ">" ">" 50)
+           ;; EDGE B -
+           (mappings-for-edge 0 50 150 0 0 1 1 0 "v" ">" 50)
+           ;; EDGE C -
+           (mappings-for-edge 0 149 199 49 0 -1 0 -1 "v" "^" 50)
+           ;; EDGE D -
+           (mappings-for-edge 149 99 199 49 0 -1 -1 0 "^" "<" 50)
+           ;; EDGE X -
+           (mappings-for-edge 49 100 50 99 0 1 1 0 "^" "<" 50)
+           ;; EDGE Y -
+           (mappings-for-edge 0 149 149 99 1 0 -1 0 "<" "<" 50)
+           ;; EDGE Z -
+           (mappings-for-edge 100 49 99 50 0 -1 -1 0 "v" ">" 50)
+
+           ;; hack to map the zeroth position into the start position (which we
+           ;; used in part one to programmatically scan to the first cell
+           [[[0 0] [0 50 ">"]]])))
 
 
 (defn cube-edge-maps-test []
   ;; same for the test cube which has a different topology
-  (into {} (concat
+  (reduce mapping-reducer {} (concat
 
             ;; EDGE A
             (mappings-for-edge 0 8 4 3 0 1 0 -1 "v" "v" 4)
@@ -243,11 +251,17 @@
 (def debug false)
 (defn wrap-row-and-column-part-two [board row column direction]
   ;; wrap out of bands steps according to the cube mapping rules
-  (let [wrapped-row-column-and-direction (cube-edge-maps [row column])]
+  (let [wrapped-row-column-and-direction-options (cube-edge-maps [row column])]
     ;; We can assert this bewcause we manually figured out the mappings along
     ;; the edge of the cube shape (cube-edge-maps)
-    (assert wrapped-row-column-and-direction (format "Row and column was %d %d" row column))
-    wrapped-row-column-and-direction))
+    (assert wrapped-row-column-and-direction-options (format "Row and column was %d %d" row column))
+    (if (= (count wrapped-row-column-and-direction-options) 1)
+      (first wrapped-row-column-and-direction-options)
+      ;; there are two mappings in this corner case, the reverse of the
+      ;; direction we came from is the wrong one
+      (first (remove (fn [[row column mapped-direction]] (= mapped-direction (reverse-direction direction))) wrapped-row-column-and-direction-options))
+      )
+    ))
 
 ;; let's just make this a global we switch for part two (rather than passing it
 ;; down or something)
@@ -275,20 +289,27 @@
     [value next-row next-column next-direction]
     ))
 
+(defn update-data-for-board [board row column direction]
+  (assoc board :data (assoc (board :data) (index-for-row-and-column board row column) direction)))
+
 (defn step-reducer [board instruction]
   (let [{direction :current-direction} board]
     (cond
       (.contains ["L", "R"] instruction) (assoc board :current-direction (direction-for-turn direction instruction))
       :else (loop [current-board board
                    remaining-steps (Integer/parseInt instruction)]
-              (let [{current-row :current-row current-column :current-column current-direction :current-direction} current-board
+              (let [{current-row :current-row current-column :current-column current-direction :current-direction data :data} current-board
                     [next-value next-row next-column next-direction] (next-step current-board current-row current-column current-direction)]
                 (if debug
-                  (println (format "Step row(%d) column(%d) steps(%d) value(%c) direction(%s)" current-row current-column remaining-steps next-value (current-board :current-direction))))
+                  (println (format "Step row(%d) column(%d) steps(%d) value(%s) direction(%s)" current-row current-column remaining-steps (str next-value) (current-board :current-direction))))
                 (if (or (= next-value \#)
                         (= remaining-steps 0))
-                  current-board
-                  (recur (assoc current-board :current-row next-row :current-column next-column :current-direction next-direction) (dec remaining-steps))))))))
+                  (update-data-for-board current-board current-row current-column current-direction)
+                  (recur (assoc
+                          (update-data-for-board current-board current-row current-column current-direction)
+                          :current-row next-row
+                          :current-column next-column
+                          :current-direction next-direction) (dec remaining-steps))))))))
 
 (defn starting-board-state [board]
   ;; You begin the path in the leftmost open tile of the top row of tiles.
@@ -320,7 +341,21 @@
         column-number (inc current-column)]
     (+ (* row-number 1000) (* column-number 4) (facing-for-direction current-direction))))
 
+(defn write-board [board]
+  (let [fn "game-board.txt"
+        {rows :rows columns :columns data :data} board
+        data-vector (vec data)]
+    (spit fn "Game board run\n")
+    (spit fn "--------------\n" :append true)
+    (doseq [row (range 0 rows)]
+      (let [sub-array (subvec data-vector (index-for-row-and-column board row 0) (inc (index-for-row-and-column board row (dec columns))))]
+        (spit fn (str (apply str sub-array) "\n") :append true))))
+  ;; return the board for the next thing
+  board)
+
 (-> (board-for-data real-data-raw)
     starting-board-state
     execute-steps
+    write-board
     solution)
+
