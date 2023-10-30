@@ -107,6 +107,8 @@
         {proposal-map :proposal-map stationary-set :stationary-set} proposals]
     ;; create a new set of coordinates based on the stationary set and the
     ;; proposal map
+    (if (= (count current-coordinates) (count stationary-set))
+      (println (format "Nothing moved after this round ---> %d" (inc round-index))))
     (set/union stationary-set (set-for-proposal-map proposal-map))))
 
 
