@@ -147,6 +147,25 @@
                 new-visited (update-visited visited new-blizzard-map minute)]
             (recur (inc minute) new-visited new-blizzard-map)))))))
 
+
+(defn part-two [data]
+  (let [blizzard-map (add-blizzard-set-to-map (map-for-data data))
+        start (start-location)
+        end (end-location blizzard-map)]
+    (reduce (fn origin-destination-reducer [reducer-blizzard-map [origin destination]]
+              (loop [minute 0
+                     visited {origin minute}
+                     current-blizzard-map reducer-blizzard-map]
+                (let [steps-at-destination-location (visited destination)]
+                  (if (not (nil? steps-at-destination-location))
+                    (do (println (format "Steps %d" (inc steps-at-destination-location)))
+                        current-blizzard-map)
+                    (let [new-blizzard-map (simulate-round current-blizzard-map)
+                          new-visited (update-visited visited new-blizzard-map minute)]
+                      (recur (inc minute) new-visited new-blizzard-map)))))) blizzard-map [[start end] [end start] [start end]])))
+
+
+
 ;; rendering
 ;;
 ;;
@@ -155,5 +174,4 @@
   (let [blizzard-map (add-blizzard-set-to-map (map-for-data data)) [visited new-blizzard-map] (part-one data limit)]
     ;; (render-with-vector blizzard-map (:blizzards new-blizzard-map))
     (render-with-vector blizzard-map visited)
-    visited
-    ))
+    visited))
